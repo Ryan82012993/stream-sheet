@@ -56,11 +56,14 @@ const ensureCellData = (sheets: any[]): any[] => {
     // 2. 强力规整并过滤公式链（calcChain），过滤掉非公式格或者越界的 dangling references，规避 getcellFormula 闪崩溃
     let calcChain = s.calcChain;
     if (calcChain && Array.isArray(calcChain)) {
-      calcChain = calcChain.filter((item: any) => {
+      // 通过 map 浅拷贝每一个 item，使其摆脱 Read-only/Frozen 锁定状态变得完全可写，并强制对齐 ID
+      const clonedChain = calcChain.map((item: any) => {
+        if (!item) return null;
+        return { ...item, id: sheetId };
+      });
+
+      calcChain = clonedChain.filter((item: any) => {
         if (!item || typeof item.r !== 'number' || typeof item.c !== 'number') return false;
-        
-        // 强制对齐 id 为当前工作表的 ID
-        item.id = sheetId;
 
         // 如果 s.data 存在，校验对应格是否真的有公式定义
         if (s.data && s.data[item.r] && s.data[item.r][item.c]) {
