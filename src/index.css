@@ -568,3 +568,32 @@ html, body, #root {
   border: 1px solid rgba(49, 50, 68, 0.4);
 }
 
+/* ==========================================================================
+   Header brand badge and utility layout refinements
+   ========================================================================== */
+.header-brand-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.brand-badge {
+  font-size: 10px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #ffffff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.file-title-margin-reset {
+  margin: 0;
+}
+
+.hidden-file-input {
+  display: none;
+}
+

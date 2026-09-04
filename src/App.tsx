@@ -226,6 +226,16 @@ export default function App() {
     });
   }, []);
 
+  // 组件卸载时，物理清除防抖自动保存计时器，防止热重载或跳转时内存泄露引发状态更新报错
+  useEffect(() => {
+    return () => {
+      if (timer.current) {
+        clearTimeout(timer.current);
+        timer.current = null;
+      }
+    };
+  }, []);
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       importExcel(e.target.files[0]);
@@ -235,14 +245,14 @@ export default function App() {
 
   const handleOpenFileHandle = async () => {
     // 兼容性优雅降级：Safari / Firefox 不支持 showOpenFilePicker 时自动回退触发 input 选择器
-    if (typeof (window as any).showOpenFilePicker !== 'function') {
+    if (typeof window.showOpenFilePicker !== 'function') {
       console.warn('showOpenFilePicker is not supported in this browser. Falling back to native file input.');
       fileInputRef.current?.click();
       return;
     }
 
     try {
-      const [handle] = await (window as any).showOpenFilePicker({
+      const [handle] = await window.showOpenFilePicker({
         types: [{
           description: 'Excel 工作簿 (*.xlsx, *.xls)',
           accept: {
@@ -434,26 +444,23 @@ export default function App() {
       flushPendingSave();
     }
 
-    setWorkbooks(prev => {
-      const filtered = prev.filter(w => w.id !== id);
-      if (id === activeId) {
-        if (filtered.length > 0) {
-          const currentIndex = prev.findIndex(w => w.id === id);
-          const nextActiveIndex = Math.max(0, currentIndex - 1);
-          const nextWb = filtered[nextActiveIndex];
-          setTimeout(() => {
-            setActiveId(nextWb.id);
-            isImportingRef.current = true;
-            lastLoadTimeRef.current = Date.now();
-          }, 0);
-        } else {
-          setTimeout(() => {
-            setActiveId('');
-          }, 0);
-        }
+    // 1. 同步计算过滤后的工作簿列表
+    const filtered = workbooks.filter(w => w.id !== id);
+    setWorkbooks(filtered);
+
+    // 2. 如果关闭的是当前活动工作簿，同步计算并设置新的 activeId，避免 state updater 回调内副作用
+    if (id === activeId) {
+      if (filtered.length > 0) {
+        const currentIndex = workbooks.findIndex(w => w.id === id);
+        const nextActiveIndex = Math.max(0, currentIndex - 1);
+        const nextWb = filtered[nextActiveIndex];
+        setActiveId(nextWb.id);
+        isImportingRef.current = true;
+        lastLoadTimeRef.current = Date.now();
+      } else {
+        setActiveId('');
       }
-      return filtered;
-    });
+    }
   };
 
   const handleNewTab = () => {
@@ -489,9 +496,9 @@ export default function App() {
         <div className="logo-area">
           <div className="excel-logo"><FileSpreadsheet size={20} color="#ffffff" /></div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-              <span style={{ fontSize: '10px', background: 'linear-gradient(135deg, #10b981, #059669)', color: '#ffffff', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold', letterSpacing: '0.5px', textTransform: 'uppercase' }}>StreamSheet</span>
-              <h1 className="file-title" style={{ margin: 0 }}>{fileName}</h1>
+            <div className="header-brand-group">
+              <span className="brand-badge">StreamSheet</span>
+              <h1 className="file-title file-title-margin-reset">{fileName}</h1>
             </div>
             <p className="file-subtitle">
               {activeWorkbook ? (
@@ -515,7 +522,7 @@ export default function App() {
           <button onClick={handleOpenFileHandle} className="btn btn-primary"><FolderOpen size={15} /> 打开Excel</button>
           <label className="btn btn-secondary">
             <Upload size={15} /> 上传
-            <input ref={fileInputRef} type="file" accept=".xlsx" onChange={handleFileUpload} style={{ display: 'none' }} />
+            <input ref={fileInputRef} type="file" accept=".xlsx" onChange={handleFileUpload} className="hidden-file-input" />
           </label>
           <button onClick={handleDownload} disabled={!activeWorkbook} className="btn btn-success"><Download size={15} /> 导出</button>
 
