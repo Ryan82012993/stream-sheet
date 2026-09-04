@@ -5,7 +5,7 @@ import './index.css';
 import LuckyExcel from 'luckyexcel';
 import { saveAs } from 'file-saver';
 import { exportExcelFile } from './utils/excelExporter';
-import { Upload, Download, RefreshCw, AlertCircle, CheckCircle, FolderOpen, FileSpreadsheet, Plus, X } from 'lucide-react';
+import { Upload, Download, RefreshCw, AlertCircle, CheckCircle, FolderOpen, FileSpreadsheet, Plus, X, HelpCircle } from 'lucide-react';
 
 const URL = 'http://localhost:3001';
 
@@ -602,6 +602,27 @@ export default function App() {
             <input ref={fileInputRef} type="file" accept=".xlsx" onChange={handleFileUpload} style={{ display: 'none' }} />
           </label>
           <button onClick={handleDownload} disabled={!activeWorkbook} className="btn btn-success"><Download size={15} /> 导出</button>
+
+          <div className="help-tooltip-container" tabIndex={0}>
+            <HelpCircle size={18} className="help-icon" />
+            <div className="help-tooltip-popup">
+              <h4 className="help-tooltip-title">💡 功能选择与保存说明</h4>
+              <div className="help-tooltip-grid">
+                <div className="help-tooltip-section">
+                  <h5>💻 打开 Excel (本地物理直连)</h5>
+                  <p className="help-tooltip-desc">
+                    <strong>实时自动保存</strong>：基于浏览器文件系统接口，您的修改将在 1.5 秒内<strong>直接写回本机原 Excel 文件</strong>，无需重新手动下载导出。
+                  </p>
+                </div>
+                <div className="help-tooltip-section">
+                  <h5 className="upload-title">☁️ 上传 (网页离线沙盒)</h5>
+                  <p className="help-tooltip-desc">
+                    <strong>单次只读加载</strong>：文件作为一次性副本读入浏览器沙盒，任何编辑均不会改写您的本机原文件。保存修改需手动点击 <strong>“导出”</strong> 重新下载。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </header>
 
