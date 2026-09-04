@@ -105,24 +105,14 @@ const ensureCellData = (sheets: any[]): any[] => {
 };
 
 export default function App() {
-  const [workbooks, setWorkbooks] = useState<WorkbookItem[]>([
-    {
-      id: 'sandbox-default',
-      fileName: '未命名表格.xlsx',
-      sheets: [{ name: 'Sheet1', id: 'sheet-1', index: 'sheet-1', status: 1, celldata: [], order: 0 }],
-      fileHandle: null,
-      backendSync: false,
-      saveStatus: 'idle',
-      workbookKey: 'default-key'
-    }
-  ]);
-  const [activeId, setActiveId] = useState<string>('sandbox-default');
+  const [workbooks, setWorkbooks] = useState<WorkbookItem[]>([]);
+  const [activeId, setActiveId] = useState<string>('');
   const [err, setErr] = useState<string | null>(null);
   const [backendActive, setBackendActive] = useState(false);
   const [capturedErrors, setCapturedErrors] = useState<{ message: string; stack?: string; time: string }[]>([]);
 
   const timer = useRef<any>(null);
-  const isImportingRef = useRef<boolean>(true);
+  const isImportingRef = useRef<boolean>(false);
   const lastLoadTimeRef = useRef<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -315,15 +305,8 @@ export default function App() {
   useEffect(() => {
     fetch(`${URL}/api/status`).then(r => r.json()).then(d => {
       setBackendActive(true);
-      fetch(`${URL}/api/load`).then(r => r.blob()).then(b => {
-        importExcel(new File([b], d.fileName), null, true);
-      }).catch(() => {
-        setErr('加载伴侣服务器文件失败');
-        isImportingRef.current = false;
-      });
     }).catch(() => {
       setBackendActive(false);
-      isImportingRef.current = false;
     });
   }, []);
 
