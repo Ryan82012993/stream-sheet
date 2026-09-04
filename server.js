@@ -70,6 +70,31 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // 4. 前端报错捕获同步接口
+  if (url.pathname === '/api/log-error' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const errorData = JSON.parse(body);
+        const logMsg = `\n=======================================================\n` +
+                       `[BROWSER CRASH DETECTED] ${new Date().toLocaleString()}\n` +
+                       `Message: ${errorData.message}\n` +
+                       `Stack: ${errorData.stack || 'No stack'}\n` +
+                       `ActiveTab: ${errorData.activeTab || 'none'}\n` +
+                       `=======================================================\n`;
+        console.error(logMsg);
+        fs.appendFileSync(path.resolve(__dirname, 'browser-errors.log'), logMsg);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: 'Invalid JSON' }));
+      }
+    });
+    return;
+  }
+
   res.writeHead(404);
   res.end('Not Found');
 });
