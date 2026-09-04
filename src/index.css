@@ -432,3 +432,139 @@ html, body, #root {
   border-left-color: #94a3b8;
   background-color: #f8fafc;
 }
+
+
+/* ==========================================================================
+   浏览器运行时错误监控面板 (Error Console Overlay) - Catppuccin Mocha 高级暗黑风格
+   ========================================================================== */
+.error-console-overlay {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 420px;
+  max-height: 300px;
+  background-color: #1e1e2e;
+  color: #f38ba8;
+  border: 1px solid rgba(243, 139, 168, 0.4);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.2);
+  padding: 16px;
+  font-size: 12px;
+  font-family: 'Fira Code', 'Courier New', Courier, monospace;
+  z-index: 99999;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.25s ease;
+  backdrop-filter: blur(8px);
+}
+
+.error-console-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(243, 139, 168, 0.2);
+  padding-bottom: 8px;
+}
+
+.error-console-title {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.5px;
+}
+
+.error-console-btn-group {
+  display: flex;
+  gap: 8px;
+}
+
+.error-console-btn {
+  border: none;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.error-console-btn-copy {
+  background-color: #313244;
+  color: #cdd6f4;
+}
+
+.error-console-btn-copy:hover {
+  background-color: #45475a;
+  color: #f5e0dc;
+}
+
+.error-console-btn-clear {
+  background-color: #f38ba8;
+  color: #11111b;
+  font-weight: 600;
+}
+
+.error-console-btn-clear:hover {
+  background-color: #f5c2e7;
+}
+
+.error-console-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+/* 自定义滚动条样式 */
+.error-console-list::-webkit-scrollbar,
+.error-console-overlay::-webkit-scrollbar {
+  width: 4px;
+}
+.error-console-list::-webkit-scrollbar-track,
+.error-console-overlay::-webkit-scrollbar-track {
+  background: transparent;
+}
+.error-console-list::-webkit-scrollbar-thumb,
+.error-console-overlay::-webkit-scrollbar-thumb {
+  background: #313244;
+  border-radius: 2px;
+}
+.error-console-list::-webkit-scrollbar-thumb:hover,
+.error-console-overlay::-webkit-scrollbar-thumb:hover {
+  background: #f38ba8;
+}
+
+.error-console-item {
+  padding-bottom: 8px;
+}
+
+.error-console-item:not(:last-child) {
+  border-bottom: 1px dashed rgba(49, 50, 68, 0.6);
+}
+
+.error-console-item-header {
+  color: #f9e2af;
+  font-weight: 600;
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+
+.error-console-stack {
+  margin: 4px 0 0 0;
+  padding: 6px;
+  background-color: #11111b;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 10px;
+  color: #a6adc8;
+  max-height: 100px;
+  overflow-y: auto;
+  border: 1px solid rgba(49, 50, 68, 0.4);
+}
+

@@ -53,28 +53,70 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 3. 实时防抖同步保存接口 (直接将请求流 Pipe 写入本地文件)
+  // 3. 实时防抖同步保存接口 (采用临时文件+原子性重命名覆盖，杜绝传输中断导致原 Excel 物理文件损坏变空)
   if (url.pathname === '/api/save' && req.method === 'POST') {
-    const writeStream = fs.createWriteStream(TARGET_FILE);
+    const TEMP_FILE = `${TARGET_FILE}.tmp`;
+    const writeStream = fs.createWriteStream(TEMP_FILE);
+    
     req.pipe(writeStream);
-    req.on('end', () => {
-      console.log(`[Sync] ${new Date().toLocaleTimeString()} 自动防抖保存成功！物理路径: ${TARGET_FILE}`);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true }));
-    });
-    req.on('error', (err) => {
-      console.error('[Error] 保存失败:', err);
+    
+    writeStream.on('error', (err) => {
+      console.error('[Error] 写入临时文件失败:', err);
+      // 清理可能产生的临时垃圾文件
+      if (fs.existsSync(TEMP_FILE)) {
+        try { fs.unlinkSync(TEMP_FILE); } catch (e) {}
+      }
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: false, error: err.message }));
+      res.end(JSON.stringify({ success: false, error: 'Write failed: ' + err.message }));
+    });
+
+    req.on('error', (err) => {
+      console.error('[Error] 保存传输流异常:', err);
+      writeStream.destroy();
+      if (fs.existsSync(TEMP_FILE)) {
+        try { fs.unlinkSync(TEMP_FILE); } catch (e) {}
+      }
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Transfer aborted: ' + err.message }));
+    });
+
+    req.on('end', () => {
+      // 写入完全成功，原子重命名覆盖原文件，100% 安全
+      fs.rename(TEMP_FILE, TARGET_FILE, (err) => {
+        if (err) {
+          console.error('[Error] 原子覆盖原文件失败:', err);
+          if (fs.existsSync(TEMP_FILE)) {
+            try { fs.unlinkSync(TEMP_FILE); } catch (e) {}
+          }
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Atomic save failed: ' + err.message }));
+          return;
+        }
+        console.log(`[Sync] ${new Date().toLocaleTimeString()} 自动防抖保存成功！物理路径: ${TARGET_FILE}`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+      });
     });
     return;
   }
 
-  // 4. 前端报错捕获同步接口
+  // 4. 前端报错捕获同步接口 (增加 Payload 大小防御限制，防御超长恶意攻击)
   if (url.pathname === '/api/log-error' && req.method === 'POST') {
     let body = '';
-    req.on('data', chunk => { body += chunk; });
+    const MAX_SIZE = 1 * 1024 * 1024; // 1MB 限制
+
+    req.on('data', chunk => {
+      body += chunk;
+      if (body.length > MAX_SIZE) {
+        console.warn('[Security Warning] 接收到超长报错请求，已强行中断接收');
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: 'Payload Too Large' }));
+        req.destroy();
+      }
+    });
+
     req.on('end', () => {
+      if (body.length > MAX_SIZE) return; // 已被限制中断
       try {
         const errorData = JSON.parse(body);
         const logMsg = `\n=======================================================\n` +
@@ -91,6 +133,10 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, error: 'Invalid JSON' }));
       }
+    });
+
+    req.on('error', (err) => {
+      console.error('[Error] 报错日志上报接收异常:', err);
     });
     return;
   }

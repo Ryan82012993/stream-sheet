@@ -6,103 +6,19 @@ import LuckyExcel from 'luckyexcel';
 import { saveAs } from 'file-saver';
 import { exportExcelFile } from './utils/excelExporter';
 import { Upload, Download, RefreshCw, AlertCircle, CheckCircle, FolderOpen, FileSpreadsheet, Plus, X, HelpCircle } from 'lucide-react';
+import { ensureCellData, SheetData } from './utils/sheetSanitizer';
 
-const URL = 'http://localhost:3001';
+const URL = import.meta.env.VITE_COMPANION_SERVER_URL || 'http://localhost:3001';
 
 interface WorkbookItem {
   id: string;
   fileName: string;
-  sheets: any[];
+  sheets: SheetData[];
   fileHandle: any | null;
   backendSync: boolean;
   saveStatus: 'idle' | 'saving' | 'saved' | 'error';
   workbookKey: string;
 }
-
-const ensureCellData = (sheets: any[]): any[] => {
-  if (!sheets) return [];
-  return sheets.map(s => {
-    // 确保 id 与 index 统一且一致
-    const sheetId = s.id || s.index?.toString() || Math.random().toString();
-    
-    // 1. 如果有 s.data，说明处于编辑中或保存状态，通过 s.data 重新构建 celldata
-    // 保证在 FortuneSheet 重新挂载初始化时，能够计算出正确的 lastRowNum / lastColNum，防止其缩水为默认尺寸 84x60
-    let celldata = s.celldata || [];
-    let maxR = 0;
-    let maxC = 0;
-
-    if (s.data && s.data.length > 0) {
-      const reconstructed: any[] = [];
-      for (let r = 0; r < s.data.length; r++) {
-        const rowData = s.data[r];
-        if (!rowData) continue;
-        for (let c = 0; c < rowData.length; c++) {
-          const cell = rowData[c];
-          if (cell !== null && cell !== undefined) {
-            reconstructed.push({ r, c, v: cell });
-            if (r > maxR) maxR = r;
-            if (c > maxC) maxC = c;
-          }
-        }
-      }
-      celldata = reconstructed;
-    } else if (celldata.length > 0) {
-      celldata.forEach((d: any) => {
-        if (d.r > maxR) maxR = d.r;
-        if (d.c > maxC) maxC = d.c;
-      });
-    }
-
-    // 2. 强力规整并过滤公式链（calcChain），过滤掉非公式格或者越界的 dangling references，规避 getcellFormula 闪崩溃
-    let calcChain = s.calcChain;
-    if (calcChain && Array.isArray(calcChain)) {
-      // 通过 map 浅拷贝每一个 item，使其摆脱 Read-only/Frozen 锁定状态变得完全可写，并强制对齐 ID
-      const clonedChain = calcChain.map((item: any) => {
-        if (!item) return null;
-        return { ...item, id: sheetId };
-      });
-
-      calcChain = clonedChain.filter((item: any) => {
-        if (!item || typeof item.r !== 'number' || typeof item.c !== 'number') return false;
-
-        // 如果 s.data 存在，校验对应格是否真的有公式定义
-        if (s.data && s.data[item.r] && s.data[item.r][item.c]) {
-          const cell = s.data[item.r][item.c];
-          return cell && typeof cell === 'object' && !!cell.f;
-        }
-
-        // 如果只有 celldata 存在，校验对应 celldata 格是否真的有公式定义
-        if (celldata && celldata.length > 0) {
-          const hasCellWithFormula = celldata.some((d: any) => d.r === item.r && d.c === item.c && d.v && typeof d.v === 'object' && !!d.v.f);
-          return hasCellWithFormula;
-        }
-
-        return false;
-      });
-    }
-
-    const updatedSheet: any = {
-      ...s,
-      id: sheetId,
-      index: sheetId,
-      celldata,
-      calcChain
-    };
-
-    const computedRow = Math.max(s.data?.length || 0, maxR + 1);
-    const computedCol = Math.max(s.data?.[0]?.length || 0, maxC + 1);
-
-    // 3. 动态拓展并保护安全边界，防止 initSheetData 时行列数缩水导致的数据丢失或越界崩溃
-    if (s.row !== undefined || computedRow > 0) {
-      updatedSheet.row = Math.max(s.row || 0, computedRow);
-    }
-    if (s.column !== undefined || computedCol > 0) {
-      updatedSheet.column = Math.max(s.column || 0, computedCol);
-    }
-
-    return updatedSheet;
-  });
-};
 
 export default function App() {
   const [workbooks, setWorkbooks] = useState<WorkbookItem[]>([]);
@@ -260,7 +176,7 @@ export default function App() {
 
             setWorkbooks(prev => {
               // 离场数据净化：深拷贝即将变更为不活跃的当前标签页数据，彻底剥离 FortuneSheet 挂载在 sheets 上的 DOM 等脏引用，防止组件重新挂载时崩溃
-              const purifiedPrev = prev.map(w => w.id === activeIdRef.current ? { ...w, sheets: JSON.parse(JSON.stringify(w.sheets)) } : w);
+              const purifiedPrev = prev.map(w => w.id === activeIdRef.current ? { ...w, sheets: structuredClone(w.sheets) } : w);
 
               // 如果只剩下一个未命名默认空白表，且内容为空，直接清理掉，避免用户手动关闭的麻烦
               const filtered = purifiedPrev.filter(w => {
@@ -503,7 +419,7 @@ export default function App() {
 
     // 离场数据净化：深拷贝即将变更为不活跃的当前标签页数据，彻底剥离 FortuneSheet 挂载在 sheets 上的 DOM 等脏引用，防止组件重新挂载时崩溃
     if (activeId) {
-      setWorkbooks(prev => prev.map(w => w.id === activeId ? { ...w, sheets: JSON.parse(JSON.stringify(w.sheets)) } : w));
+      setWorkbooks(prev => prev.map(w => w.id === activeId ? { ...w, sheets: structuredClone(w.sheets) } : w));
     }
 
     setActiveId(id);
@@ -545,7 +461,7 @@ export default function App() {
 
     // 离场数据净化：深拷贝即将变更为不活跃的当前标签页数据，彻底剥离 FortuneSheet 挂载在 sheets 上的 DOM 等脏引用，防止组件重新挂载时崩溃
     if (activeId) {
-      setWorkbooks(prev => prev.map(w => w.id === activeId ? { ...w, sheets: JSON.parse(JSON.stringify(w.sheets)) } : w));
+      setWorkbooks(prev => prev.map(w => w.id === activeId ? { ...w, sheets: structuredClone(w.sheets) } : w));
     }
 
     const newId = 'sandbox-new-' + Date.now();
@@ -676,54 +592,35 @@ export default function App() {
       </div>
 
       {capturedErrors.length > 0 && (
-        <div style={{
-          position: 'fixed',
-          bottom: 20,
-          right: 20,
-          width: '420px',
-          maxHeight: '300px',
-          background: '#1e1e2e',
-          color: '#f38ba8',
-          border: '1px solid #f38ba8',
-          borderRadius: '8px',
-          boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
-          padding: '16px',
-          fontSize: '12px',
-          fontFamily: 'monospace',
-          zIndex: 99999,
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f38ba833', paddingBottom: '6px' }}>
-            <span style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div className="error-console-overlay">
+          <div className="error-console-header">
+            <span className="error-console-title">
               <AlertCircle size={14} /> 捕获到浏览器运行时错误 ({capturedErrors.length})
             </span>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div className="error-console-btn-group">
               <button 
                 onClick={() => {
                   navigator.clipboard.writeText(JSON.stringify(capturedErrors, null, 2));
                   alert('错误日志已复制到剪贴板！');
                 }} 
-                style={{ background: '#313244', color: '#cdd6f4', border: 'none', borderRadius: '4px', padding: '2px 8px', cursor: 'pointer' }}
+                className="error-console-btn error-console-btn-copy"
               >
                 复制日志
               </button>
               <button 
                 onClick={() => setCapturedErrors([])} 
-                style={{ background: '#f38ba8', color: '#11111b', border: 'none', borderRadius: '4px', padding: '2px 8px', cursor: 'pointer', fontWeight: 'bold' }}
+                className="error-console-btn error-console-btn-clear"
               >
                 清空
               </button>
             </div>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div className="error-console-list">
             {capturedErrors.map((err, index) => (
-              <div key={index} style={{ borderBottom: index < capturedErrors.length - 1 ? '1px dashed #313244' : 'none', paddingBottom: '6px' }}>
-                <div style={{ color: '#f9e2af', fontWeight: 'bold', marginBottom: '4px' }}>[{err.time}] {err.message}</div>
+              <div key={index} className="error-console-item">
+                <div className="error-console-item-header">[{err.time}] {err.message}</div>
                 {err.stack && (
-                  <pre style={{ margin: 0, padding: '4px', background: '#11111b', borderRadius: '4px', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '10px', color: '#a6adc8', maxHeight: '100px', overflowY: 'auto' }}>
+                  <pre className="error-console-stack">
                     {err.stack}
                   </pre>
                 )}
