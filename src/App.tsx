@@ -475,7 +475,17 @@ export default function App() {
     const newWb: WorkbookItem = {
       id: newId,
       fileName: `新工作簿-${workbooks.length + 1}.xlsx`,
-      sheets: [{ name: 'Sheet1', id: 'sheet-1', index: 'sheet-1', status: 1, celldata: [], order: 0 }],
+      sheets: [{ 
+        name: 'Sheet1', 
+        id: 'sheet-1', 
+        index: 'sheet-1', 
+        status: 1, 
+        order: 0,
+        row: 84,
+        column: 30,
+        celldata: [],
+        config: {}
+      }],
       fileHandle: null,
       backendSync: false,
       saveStatus: 'idle',
