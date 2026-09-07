@@ -119,3 +119,129 @@ export const ensureCellData = (sheets: SheetData[]): SheetData[] => {
     return updatedSheet;
   });
 };
+
+
+/**
+ * 辅助比对：判断单个单元格对象的核心数据与格式是否实质相等
+ */
+function isCellEqual(c1: any, c2: any): boolean {
+  if (c1 === c2) return true;
+  if (!c1 || !c2) {
+    const empty1 = !c1 || (c1.v === undefined && c1.f === undefined);
+    const empty2 = !c2 || (c2.v === undefined && c2.f === undefined);
+    return empty1 && empty2;
+  }
+  
+  if (c1.v !== c2.v) return false;
+  if (c1.f !== c2.f) return false;
+  if (c1.m !== c2.m) return false;
+  if (c1.bg !== c2.bg) return false;
+  if (c1.fc !== c2.fc) return false;
+  if (c1.bl !== c2.bl) return false;
+  if (c1.it !== c2.it) return false;
+  if (c1.un !== c2.un) return false;
+  if (c1.cl !== c2.cl) return false;
+  if (c1.fs !== c2.fs) return false;
+  if (c1.ff !== c2.ff) return false;
+  if (c1.ht !== c2.ht) return false;
+  if (c1.vt !== c2.vt) return false;
+  
+  if (c1.ct?.fa !== c2.ct?.fa) return false;
+  if (c1.ct?.t !== c2.ct?.t) return false;
+  
+  if (c1.mc?.r !== c2.mc?.r || c1.mc?.c !== c2.mc?.c || c1.mc?.rs !== c2.mc?.rs || c1.mc?.cs !== c2.mc?.cs) return false;
+
+  return true;
+}
+
+/**
+ * 核心优化：判断两个工作簿的数据是否在内容或结构上发生了实质性改动
+ * 如果没有改动（仅由于光标移动、格子选中等状态触发的 onChange），返回 false
+ */
+export function hasCellDataChanged(oldSheets: SheetData[], newSheets: SheetData[]): boolean {
+  if (!oldSheets || !newSheets) return true;
+  if (oldSheets.length !== newSheets.length) return true;
+
+  for (let i = 0; i < oldSheets.length; i++) {
+    const o = oldSheets[i];
+    const n = newSheets[i];
+
+    // 1. 基础工作表属性变更
+    if (o.name !== n.name) return true;
+    if (o.id !== n.id) return true;
+    if (o.status !== n.status) return true;
+    if (o.hide !== n.hide) return true;
+    if (o.row !== n.row || o.column !== n.column) return true;
+
+    // 2. 比对二维数据 data (主要编辑区数据)
+    const oData = o.data;
+    const nData = n.data;
+    if (oData && nData) {
+      if (oData.length !== nData.length) return true;
+      for (let r = 0; r < oData.length; r++) {
+        const oRow = oData[r] || [];
+        const nRow = nData[r] || [];
+        if (oRow.length !== nRow.length) return true;
+        for (let c = 0; c < oRow.length; c++) {
+          if (!isCellEqual(oRow[c], nRow[c])) return true;
+        }
+      }
+    } else if (oData || nData) {
+      // 一个有 2D data 一个没有，属于重大结构改变
+      return true;
+    }
+
+    // 3. 比对一维数据 celldata
+    const oCelldata = o.celldata || [];
+    const nCelldata = n.celldata || [];
+    if (oCelldata.length !== nCelldata.length) return true;
+    
+    // 利用 Map 提升检索效率为 O(1)
+    const oCellMap = new Map<string, any>();
+    oCelldata.forEach(item => {
+      if (item) oCellMap.set(`${item.r}_${item.c}`, item.v);
+    });
+    for (let j = 0; j < nCelldata.length; j++) {
+      const item = nCelldata[j];
+      if (!item) continue;
+      const key = `${item.r}_${item.c}`;
+      if (!oCellMap.has(key)) return true;
+      if (!isCellEqual(oCellMap.get(key), item.v)) return true;
+    }
+
+    // 4. 比对合并单元格配置 config.merge
+    const oMerge = o.config?.merge || {};
+    const nMerge = n.config?.merge || {};
+    const oMergeKeys = Object.keys(oMerge);
+    const nMergeKeys = Object.keys(nMerge);
+    if (oMergeKeys.length !== nMergeKeys.length) return true;
+    for (const k of oMergeKeys) {
+      const om = oMerge[k];
+      const nm = nMerge[k];
+      if (!nm) return true;
+      if (om.r !== nm.r || om.c !== nm.c || om.rs !== nm.rs || om.cs !== nm.cs) return true;
+    }
+
+    // 5. 比对行高配置 rowlen
+    const oRowlen = o.config?.rowlen || {};
+    const nRowlen = n.config?.rowlen || {};
+    const oRowlenKeys = Object.keys(oRowlen);
+    const nRowlenKeys = Object.keys(nRowlen);
+    if (oRowlenKeys.length !== nRowlenKeys.length) return true;
+    for (const k of oRowlenKeys) {
+      if (oRowlen[k] !== nRowlen[k]) return true;
+    }
+
+    // 6. 比对列宽配置 columnlen
+    const oCollen = o.config?.columnlen || {};
+    const nCollen = n.config?.columnlen || {};
+    const oCollenKeys = Object.keys(oCollen);
+    const nCollenKeys = Object.keys(nCollen);
+    if (oCollenKeys.length !== nCollenKeys.length) return true;
+    for (const k of oCollenKeys) {
+      if (oCollen[k] !== nCollen[k]) return true;
+    }
+  }
+
+  return false;
+}

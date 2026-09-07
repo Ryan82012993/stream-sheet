@@ -6,7 +6,7 @@ import LuckyExcel from 'luckyexcel';
 import { saveAs } from 'file-saver';
 import { exportExcelFile } from './utils/excelExporter';
 import { Upload, Download, RefreshCw, AlertCircle, CheckCircle, FolderOpen, FileSpreadsheet, Plus, X, HelpCircle } from 'lucide-react';
-import { ensureCellData, SheetData } from './utils/sheetSanitizer';
+import { ensureCellData, SheetData, hasCellDataChanged } from './utils/sheetSanitizer';
 
 const URL = import.meta.env.VITE_COMPANION_SERVER_URL || 'http://localhost:3001';
 
@@ -379,6 +379,13 @@ export default function App() {
     });
 
     if (!target.fileHandle && !target.backendSync) return;
+
+    // 性能优化防御：利用 hasCellDataChanged 高效判断当前操作是否包含实质性的数据（单元格值、公式、样式、行高、列宽、合并设置等）修改
+    // 如果没有实质变动（仅因单元格点击、选区聚焦、界面滚动等纯视图状态触发 onChange 派发），则静默跳过自动物理落盘，避免昂贵的 CPU 及硬盘 I/O
+    const changed = hasCellDataChanged(target.sheets, newSheets);
+    if (!changed) {
+      return;
+    }
 
     if (Date.now() - lastLoadTimeRef.current < 2500) {
       return;

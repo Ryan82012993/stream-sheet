@@ -126,7 +126,9 @@ const server = http.createServer(async (req, res) => {
                        `ActiveTab: ${errorData.activeTab || 'none'}\n` +
                        `=======================================================\n`;
         console.error(logMsg);
-        fs.appendFileSync(path.resolve(__dirname, 'browser-errors.log'), logMsg);
+        fs.appendFile(path.resolve(__dirname, 'browser-errors.log'), logMsg, (err) => {
+          if (err) console.error('[Error] 写入本地错误日志文件失败:', err);
+        });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true }));
       } catch (e) {
@@ -144,6 +146,17 @@ const server = http.createServer(async (req, res) => {
   res.writeHead(404);
   res.end('Not Found');
 });
+
+// 启动时物理清理残留的临时保存文件 (.tmp)，保持工作簿目录清爽干净
+const TEMP_FILE = `${TARGET_FILE}.tmp`;
+if (fs.existsSync(TEMP_FILE)) {
+  try {
+    fs.unlinkSync(TEMP_FILE);
+    console.log(`[Init] 成功清理上一次非正常关闭残留的临时保存文件: ${TEMP_FILE}`);
+  } catch (e) {
+    console.error(`[Init Warning] 清理临时文件失败:`, e.message);
+  }
+}
 
 ensureTargetFile().then(() => {
   server.listen(PORT, () => {
