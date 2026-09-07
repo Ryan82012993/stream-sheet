@@ -116,7 +116,7 @@ export const ensureCellData = (sheets: SheetData[]): SheetData[] => {
       updatedSheet.column = Math.max(s.column || 0, computedCol);
     }
 
-    return updatedSheet;
+    return enrichSheetMerge(updatedSheet);
   });
 };
 
@@ -244,4 +244,99 @@ export function hasCellDataChanged(oldSheets: SheetData[], newSheets: SheetData[
   }
 
   return false;
+}
+
+
+/**
+ * 核心优化补载：高保真填充合并单元格底层的 mc 属性
+ * 1. 若存在 2D data，确保合并区内的每个格子都挂载 mc 指向，左上角格子附带完整的 rs, cs。
+ * 2. 若存在 1D celldata，在 Map 中进行校验，如果合并范围内的某些格子因为 Excel 空白被忽略，
+ *    强行补全并追加入 celldata 列表中，同时注入 mc 配置，保证 FortuneSheet 的 init 渲染绝对完整。
+ */
+export function enrichSheetMerge(s: SheetData): SheetData {
+  const merge = s.config?.merge;
+  if (!merge) return s;
+
+  const sheet = { ...s };
+
+  // 1. 如果存在 2D data，进行单元格级别 mc 注入与补全
+  if (sheet.data && sheet.data.length > 0) {
+    const data = sheet.data.map(row => (row ? [...row] : []));
+    Object.values(merge).forEach((m: any) => {
+      if (!m || typeof m.r !== 'number' || typeof m.c !== 'number') return;
+      const rs = m.rs || 1;
+      const cs = m.cs || 1;
+
+      for (let ri = 0; ri < rs; ri++) {
+        const r = m.r + ri;
+        if (data.length <= r) continue;
+        if (!data[r]) data[r] = [];
+        
+        for (let ci = 0; ci < cs; ci++) {
+          const c = m.c + ci;
+          let cell = data[r][c];
+          if (cell === null || cell === undefined) {
+            cell = {};
+          } else if (typeof cell !== 'object') {
+            cell = { v: cell };
+          } else {
+            cell = { ...cell };
+          }
+
+          if (ri === 0 && ci === 0) {
+            cell.mc = { r: m.r, c: m.c, rs, cs };
+          } else {
+            cell.mc = { r: m.r, c: m.c };
+          }
+          data[r][c] = cell;
+        }
+      }
+    });
+    sheet.data = data;
+  }
+
+  // 2. 如果存在 1D celldata，进行补全并强制注入 mc
+  if (sheet.celldata) {
+    const celldataMap = new Map<string, any>();
+    sheet.celldata.forEach(item => {
+      if (item) celldataMap.set(`${item.r}_${item.c}`, item);
+    });
+
+    Object.values(merge).forEach((m: any) => {
+      if (!m || typeof m.r !== 'number' || typeof m.c !== 'number') return;
+      const rs = m.rs || 1;
+      const cs = m.cs || 1;
+
+      for (let ri = 0; ri < rs; ri++) {
+        const r = m.r + ri;
+        for (let ci = 0; ci < cs; ci++) {
+          const c = m.c + ci;
+          const key = `${r}_${c}`;
+          let item = celldataMap.get(key);
+          
+          if (!item) {
+            // 强力补全！原 Excel 中因为空白被省略的合并区域格子，强行追加入 celldata 列表
+            item = { r, c, v: {} };
+            celldataMap.set(key, item);
+          } else {
+            const val = item.v === null || item.v === undefined 
+              ? {} 
+              : (typeof item.v === 'object' ? { ...item.v } : { v: item.v });
+            item = { ...item, v: val };
+            celldataMap.set(key, item);
+          }
+
+          if (ri === 0 && ci === 0) {
+            item.v.mc = { r: m.r, c: m.c, rs, cs };
+          } else {
+            item.v.mc = { r: m.r, c: m.c };
+          }
+        }
+      }
+    });
+
+    sheet.celldata = Array.from(celldataMap.values());
+  }
+
+  return sheet;
 }
