@@ -20,7 +20,7 @@ export interface SheetData {
   id?: string;
   index?: string | number;
   name: string;
-  status?: number | string;
+  status?: number;
   celldata?: any[];
   data?: any[][];
   calcChain?: CalcChainItem[];
@@ -73,7 +73,7 @@ export const ensureCellData = (sheets: SheetData[]): SheetData[] => {
     let calcChain = s.calcChain;
     if (calcChain && Array.isArray(calcChain)) {
       // 通过 map 浅拷贝每一个 item，使其摆脱 Read-only/Frozen 锁定状态变得完全可写，并强制对齐 ID
-      const clonedChain = calcChain.map((item: CalcChainItem) => {
+      const clonedChain = calcChain.map((item: CalcChainItem): CalcChainItem | null => {
         if (!item) return null;
         return { ...item, id: sheetId };
       });

@@ -120,8 +120,15 @@ export default function App() {
               if (finalStatus === 1) {
                 hasActive = true;
               }
+              
+              // 关键修复：从 LuckyExcel 导入时，必须主动剔除 s.data！
+              // 因为 LuckyExcel 输出的 s.data 往往是缺少合并单元格（mc）等元数据的骨架二维数组。
+              // 如果保留 s.data，ensureCellData 会基于此空骨架覆写 celldata，且 FortuneSheet 也会优先使用它而忽略富文本的 s.celldata。
+              // 设为 undefined 后，FortuneSheet 会自动从富文本的 s.celldata + s.config.merge 完美生成 2D 矩阵并高保真渲染合并单元格。
+              const { data, ...rest } = s;
+
               return {
-                ...s,
+                ...rest,
                 id: sheetId,
                 index: sheetId, // 强一致性绑定：确保 index 与 id 恒等，规避 FortuneSheet 计算公式和定位单元格时因 index 缺失或不一致导致的 Cannot read properties of undefined 崩溃
                 status: finalStatus
@@ -219,7 +226,7 @@ export default function App() {
 
   // 挂载时检测伴侣流服务器状态
   useEffect(() => {
-    fetch(`${URL}/api/status`).then(r => r.json()).then(d => {
+    fetch(`${URL}/api/status`).then(r => r.json()).then(() => {
       setBackendActive(true);
     }).catch(() => {
       setBackendActive(false);
