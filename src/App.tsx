@@ -511,11 +511,50 @@ export default function App() {
     if (!target) return;
     try {
       setWorkbooks(prev => prev.map(w => w.id === target.id ? { ...w, saveStatus: 'saving' } : w));
-      saveAs(await exportExcelFile(target.sheets), target.fileName);
-      setWorkbooks(prev => prev.map(w => w.id === target.id ? { ...w, saveStatus: 'saved' } : w));
+      const blob = await exportExcelFile(target.sheets);
+
+      // 1. 如果浏览器支持系统文件保存选择器 (Chrome / Edge / Opera 等)
+      if (typeof (window as any).showSaveFilePicker === 'function') {
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: target.fileName,
+            types: [{
+              description: 'Excel 工作簿',
+              accept: {
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx']
+              }
+            }]
+          });
+
+          // 写入本地选定路径
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          
+          // 💡 顺顺畅畅地升级该 Tab 的句柄，使其后续编辑支持自动原位物理写盘！
+          setWorkbooks(prev => prev.map(w => w.id === target.id ? { 
+            ...w, 
+            fileName: handle.name, // 更新为用户实际保存的文件名
+            fileHandle: handle, 
+            saveStatus: 'saved' 
+          } : w));
+        } catch (errPicker: any) {
+          if (errPicker.name === 'AbortError') {
+            // 用户取消了保存，默默恢复为 idle 状态，不报红
+            setWorkbooks(prev => prev.map(w => w.id === target.id ? { ...w, saveStatus: 'idle' } : w));
+            return;
+          }
+          throw errPicker;
+        }
+      } else {
+        // 2. 优雅降级：Firefox/Safari 等不支持的浏览器直接下载到默认下载目录
+        saveAs(blob, target.fileName);
+        setWorkbooks(prev => prev.map(w => w.id === target.id ? { ...w, saveStatus: 'saved' } : w));
+      }
     } catch (e: any) {
-      setErr('导出失败');
+      console.error('Export failed:', e);
       setWorkbooks(prev => prev.map(w => w.id === target.id ? { ...w, saveStatus: 'error' } : w));
+      setErr(`导出失败 (${target.fileName}): ` + e.message);
     }
   };
 
