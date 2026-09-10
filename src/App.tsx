@@ -26,11 +26,13 @@ export default function App() {
   const [err, setErr] = useState<string | null>(null);
   const [backendActive, setBackendActive] = useState(false);
   const [capturedErrors, setCapturedErrors] = useState<{ message: string; stack?: string; time: string }[]>([]);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
 
   const timer = useRef<any>(null);
   const isImportingRef = useRef<boolean>(false);
   const lastLoadTimeRef = useRef<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragCounter = useRef<number>(0);
 
   // 用 Ref 数组 and Ref ID 保证闭包在定时器等异步回调内拿到最新值，避免经典闭包时序 Bug
   const workbooksRef = useRef<WorkbookItem[]>(workbooks);
@@ -308,6 +310,86 @@ export default function App() {
     }
   };
 
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer.types.includes('Files')) {
+      dragCounter.current++;
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current--;
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0;
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setIsDragging(false);
+
+    const items = [...e.dataTransfer.items];
+    const files = [...e.dataTransfer.files];
+
+    if (files.length === 0) return;
+
+    const excelFile = files.find(f => f.name.endsWith('.xlsx') || f.name.endsWith('.xls'));
+    if (!excelFile) {
+      setErr('不支持的文件格式：请拖入 .xlsx 或 .xls 格式的 Excel 工作簿');
+      return;
+    }
+
+    let fileHandle: any = null;
+    const excelItem = items.find(item => item.kind === 'file' && (item.type.includes('sheet') || item.type.includes('excel') || excelFile.name.endsWith('.xlsx') || excelFile.name.endsWith('.xls')));
+    
+    if (excelItem && typeof (excelItem as any).getAsFileSystemHandle === 'function') {
+      try {
+        const handle = await (excelItem as any).getAsFileSystemHandle();
+        if (handle && handle.kind === 'file') {
+          fileHandle = handle;
+        }
+      } catch (errHandle) {
+        console.warn('获取拖拽文件句柄失败，将降级为只读沙盒模式:', errHandle);
+      }
+    }
+
+    if (fileHandle) {
+      let alreadyOpenWb: WorkbookItem | null = null;
+      for (const wb of workbooksRef.current) {
+        if (wb.fileHandle) {
+          try {
+            const isSame = await fileHandle.isSameEntry(wb.fileHandle);
+            if (isSame) {
+              alreadyOpenWb = wb;
+              break;
+            }
+          } catch (errSame) {
+            console.error('拖拽比对文件句柄失败:', errSame);
+          }
+        }
+      }
+
+      if (alreadyOpenWb) {
+        handleSwitchTab(alreadyOpenWb.id);
+        return;
+      }
+
+      try {
+        const file = await fileHandle.getFile();
+        importExcel(file, fileHandle);
+      } catch (e: any) {
+        console.error('读取拖拽文件句柄内容失败，降级为沙盒模式:', e);
+        importExcel(excelFile);
+      }
+    } else {
+      importExcel(excelFile);
+    }
+  };
+
   const performSave = async (targetId: string, currSheets: any[]) => {
     const target = workbooksRef.current.find(w => w.id === targetId);
     if (!target) return;
@@ -515,7 +597,22 @@ export default function App() {
   const saveStatus = activeWorkbook ? activeWorkbook.saveStatus : 'idle';
 
   return (
-    <div className="app-container">
+    <div 
+      className="app-container"
+      onDragEnter={handleDragEnter}
+      onDragOver={(e) => e.preventDefault()}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragging && (
+        <div className="drag-drop-overlay">
+          <div className="drag-drop-box">
+            <FileSpreadsheet size={48} className="animate-bounce" color="#107c41" />
+            <h3>释放鼠标即可打开 Excel</h3>
+            <p>支持物理直写（限 Chrome / Edge）或离线沙盒安全导入</p>
+          </div>
+        </div>
+      )}
       <header className="app-header">
         <div className="logo-area">
           <div className="excel-logo"><FileSpreadsheet size={20} color="#ffffff" /></div>
